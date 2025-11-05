@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Travel Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #f4f4f4; }
+    #map { height: 100vh; width: 100%; }
+    .leaflet-popup-content img {
+      width: 100%;
+      border-radius: 10px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    // Initialize the map centered on the US
+    var map = L.map('map').setView([39.5, -98.35], 4);
+
+    // Use a simple, minimal basemap (no restaurants or POIs)
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors & CartoDB'
+    }).addTo(map);
+
+    // List of locations
+    const locations = [
+      {
+        name: "Big Bend National Park",
+        coords: [29.25, -103.25],
+        img: "https://upload.wikimedia.org/wikipedia/commons/5/54/Big_Bend_National_Park_Landscape.jpg",
+        desc: "A vast desert wilderness in southwest Texas known for dramatic canyons and starry skies."
+      },
+      {
+        name: "Olympic National Park",
+        coords: [47.97, -123.5],
+        img: "https://upload.wikimedia.org/wikipedia/commons/2/24/Olympic_National_Park_Hoh_Rain_Forest.jpg",
+        desc: "Washington's crown jewel featuring rainforests, rugged coastline, and snowcapped peaks."
+      },
+      {
+        name: "Katmai National Park",
+        coords: [58.6, -155.0],
+        img: "https://upload.wikimedia.org/wikipedia/commons/3/3c/Brown_bears_fishing_in_Katmai_National_Park.jpg",
+        desc: "Alaska's remote park famous for brown bears and the Valley of Ten Thousand Smokes."
+      },
+      {
+        name: "Pikes Peak",
+        coords: [38.84, -105.04],
+        img: "https://upload.wikimedia.org/wikipedia/commons/f/f6/Pikes_Peak_from_the_Garden_of_the_Gods.jpg",
+        desc: "Iconic 14,115-ft mountain overlooking Colorado Springs, accessible by car or trail."
+      }
+    ];
+
+    // Add markers for each location
+    locations.forEach(loc => {
+      L.marker(loc.coords).addTo(map)
+        .bindPopup(`<b>${loc.name}</b><br>${loc.desc}<br><img src='${loc.img}' alt='${loc.name}'>`);
+    });
+  </script>
+</body>
+</html>
