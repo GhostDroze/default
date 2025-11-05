@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>My Travel Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root{--accent:#2b7cff;--bg:#f7f8fa}
+    html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    #map{height:100vh;width:100%}
+    /* Floating controls */
+    .controls{position:fixed;right:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:1000}
+    .btn{background:var(--accent);color:#fff;padding:10px 12px;border-radius:10px;border:none;box-shadow:0 6px 18px rgba(43,124,255,0.18);cursor:pointer;font-weight:600}
+    .btn.secondary{background:#fff;color:#111;border:1px solid #e6e9ef}
+    .panel{position:fixed;left:12px;top:12px;z-index:1000;background:#fff;padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.08);max-width:360px}
+    .hidden{display:none}
+    input[type=text], textarea, select{width:100%;padding:8px;margin-top:6px;margin-bottom:8px;border-radius:8px;border:1px solid #e6e9ef}
+    label{font-size:13px;color:#333}
+    .result{padding:8px;border-radius:8px;border:1px solid #eef2f7;margin-top:6px;cursor:pointer}
+    .thumb{width:100%;border-radius:8px;margin-top:8px}
+    .small{font-size:12px;color:#666}
+    .footer{position:fixed;left:12px;bottom:12px;right:12px;display:flex;justify-content:space-between;gap:8px}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <div class="controls">
+    <button id="addBtn" class="btn">+ Add Adventure</button>
+    <button id="exportBtn" class="btn secondary">Export JSON</button>
+    <button id="importBtn" class="btn secondary">Import JSON</button>
+  </div>
+
+  <div id="searchPanel" class="panel hidden" aria-hidden="true">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Add Adventure Location</strong>
+      <button id="closeSearch" class="btn secondary" style="padding:6px">Close</button>
+    </div>
+    <label>Search places (e.g. National Park, Pikes Peak)</label>
+    <input id="q" type="text" placeholder="Type a place name" />
+    <button id="searchBtn" class="btn" style="width:100%">Search</button>
+    <div id="results"></div>
+    <hr />
+    <div class="small">After selecting a search result you can edit the name, add notes, and an image URL before saving the pin.</div>
+  </div>
+
+  <div id="editPanel" class="panel hidden" aria-hidden="true" style="top:unset;left:50%;transform:translateX(-50%);width:360px;bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Edit pin</strong>
+      <button id="cancelEdit" class="btn secondary" style="padding:6px">Cancel</button>
+    </div>
+    <label>Name</label>
+    <input id="editName" type="text" />
+    <label>Notes</label>
+    <textarea id="editNotes" rows="3"></textarea>
+    <label>Image URL (optional)</label>
+    <input id="editImage" type="text" placeholder="https://...jpg" />
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button id="savePin" class="btn">Save pin</button>
+      <button id="saveGithub" class="btn secondary">Save to GitHub (optional)</button>
+    </div>
+    <div id="githubPanel" class="hidden" style="margin-top:8px">
+      <label>Owner (username/org)</label>
+      <input id="ghOwner" type="text" placeholder="your-username" />
+      <label>Repo name</label>
+      <input id="ghRepo" type="text" placeholder="travel-map" />
+      <label>Path to JSON (e.g. locations.json)</label>
+      <input id="ghPath" type="text" value="locations.json" />
+      <label>Branch</label>
+      <input id="ghBranch" type="text" value="main" />
+      <label>Personal Access Token (store only in your browser)</label>
+      <input id="ghToken" type="text" placeholder="ghp_..." />
+      <div class="small">Providing a token will commit an updated JSON file to the specified repo/path. Token is sent directly to GitHub — treat it as secret.</div>
+      <button id="commitGithub" class="btn" style="margin-top:8px">Commit to GitHub</button>
+    </div>
+  </div>
+
+  <input id="fileInput" type="file" accept="application/json" class="hidden" />
+
+  <script>
+    // Basic map
+    const map = L.map('map', {preferCanvas:true}).setView([39.5, -98.35], 4);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {maxZoom:18, attribution:'&copy; OpenStreetMap contributors & CartoDB'}).addTo(map);
+
+    // Storage key
+    const STORAGE_KEY = 'my_travel_locations_v1';
+
+    // Initial locations
+    const defaultLocations = [
+      { id: genId(), name: 'Big Bend National Park', coords:[29.25,-103.25], img:'https://upload.wikimedia.org/wikipedia/commons/5/54/Big_Bend_National_Park_Landscape.jpg', notes:'Desert canyons and night sky.'},
+      { id: genId(), name: 'Olympic National Park', coords:[47.97,-123.5], img:'https://upload.wikimedia.org/wikipedia/commons/2/24/Olympic_National_Park_Hoh_Rain_Forest.jpg', notes:'Rainforests, coast, and mountains.'},
+      { id: genId(), name: 'Katmai National Park', coords:[58.6,-155.0], img:'https://upload.wikimedia.org/wikipedia/commons/3/3c/Brown_bears_fishing_in_Katmai_National_Park.jpg', notes:'Brown bears and volcanic landscapes.'},
+      { id: genId(), name: 'Pikes Peak', coords:[38.84,-105.04], img:'https://upload.wikimedia.org/wikipedia/commons/f/f6/Pikes_Peak_from_the_Garden_of_the_Gods.jpg', notes:'Iconic Colorado 14er.'}
+    ];
+
+    let locations = loadLocations();
+    let markers = {};
+
+    function genId(){ return 'id_' + Math.random().toString(36).slice(2,9) }
+
+    function loadLocations(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if(raw) return JSON.parse(raw);
+      }catch(e){console.warn('load failed',e)}
+      // fall back to defaults
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultLocations));
+      return defaultLocations.slice();
+    }
+
+    function saveLocations(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(locations)); }
+
+    function addMarker(loc, openPopup=false){
+      const m = L.marker(loc.coords).addTo(map);
+      const imgHtml = loc.img?`<img src="${loc.img}" class="thumb" alt="${loc.name}" onerror="this.style.display='none'">`:'';
+      const html = `<strong>${escapeHtml(loc.name)}</strong><div class="small">${escapeHtml(loc.notes||'')}</div>${imgHtml}`;
+      m.bindPopup(html);
+      markers[loc.id] = m;
+      if(openPopup) m.openPopup();
+    }
+
+    function renderAll(){
+      // clear
+      for(const k in markers){ try{ map.removeLayer(markers[k]) }catch(e){} }
+      markers = {};
+      locations.forEach(l => addMarker(l));
+    }
+
+    renderAll();
+
+    // Controls
+    const addBtn = document.getElementById('addBtn');
+    const searchPanel = document.getElementById('searchPanel');
+    const closeSearch = document.getElementById('closeSearch');
+    const searchBtn = document.getElementById('searchBtn');
+    const qInput = document.getElementById('q');
+    const resultsDiv = document.getElementById('results');
+    const editPanel = document.getElementById('editPanel');
+    const editName = document.getElementById('editName');
+    const editNotes = document.getElementById('editNotes');
+    const editImage = document.getElementById('editImage');
+    const savePin = document.getElementById('savePin');
+    const cancelEdit = document.getElementById('cancelEdit');
+    const saveGithub = document.getElementById('saveGithub');
+    const githubPanel = document.getElementById('githubPanel');
+    const commitGithub = document.getElementById('commitGithub');
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const fileInput = document.getElementById('fileInput');
+
+    let pendingSelected = null; // holds search result for edit
+
+    addBtn.addEventListener('click', ()=>{ searchPanel.classList.remove('hidden'); searchPanel.setAttribute('aria-hidden','false'); qInput.focus() });
+    closeSearch.addEventListener('click', ()=>{ searchPanel.classList.add('hidden'); searchPanel.setAttribute('aria-hidden','true'); resultsDiv.innerHTML=''; qInput.value=''; });
+
+    searchBtn.addEventListener('click', ()=>{ doSearch(qInput.value) });
+    qInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); doSearch(qInput.value); } });
+
+    function doSearch(q){
+      if(!q || !q.trim()) return;
+      resultsDiv.innerHTML = '<div class="small">Searching…</div>';
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(q) + '&limit=8&addressdetails=1';
+      fetch(url,{headers:{'Accept':'application/json'}}).then(r=>r.json()).then(data=>{
+        resultsDiv.innerHTML='';
+        if(!data || !data.length){ resultsDiv.innerHTML='<div class="small">No results</div>'; return }
+        data.forEach(item=>{
+          const div = document.createElement('div');
+          div.className='result';
+          div.innerHTML = `<strong>${escapeHtml(item.display_name)}</strong><div class="small">lat:${item.lat} lon:${item.lon}</div>`;
+          div.addEventListener('click', ()=>{
+            // prepare edit panel with selected location
+            pendingSelected = { id: genId(), name: item.display_name, coords:[parseFloat(item.lat), parseFloat(item.lon)], img:'', notes:'' };
+            editName.value = pendingSelected.name;
+            editNotes.value = '';
+            editImage.value = '';
+            searchPanel.classList.add('hidden');
+            openEdit();
+          });
+          resultsDiv.appendChild(div);
+        })
+      }).catch(err=>{ resultsDiv.innerHTML='<div class="small">Search failed</div>'; console.error(err) });
+    }
+
+    function openEdit(){ editPanel.classList.remove('hidden'); editPanel.setAttribute('aria-hidden','false'); }
+    cancelEdit.addEventListener('click', ()=>{ editPanel.classList.add('hidden'); editPanel.setAttribute('aria-hidden','true'); pendingSelected=null });
+
+    savePin.addEventListener('click', ()=>{
+      if(!pendingSelected) return;
+      pendingSelected.name = editName.value || pendingSelected.name;
+      pendingSelected.notes = editNotes.value || '';
+      pendingSelected.img = editImage.value || '';
+      locations.push(pendingSelected);
+      saveLocations();
+      addMarker(pendingSelected, true);
+      editPanel.classList.add('hidden'); editPanel.setAttribute('aria-hidden','true'); pendingSelected=null;
+      alert('Pin added and saved locally. Use Export JSON to get a file for GitHub.');
+    });
+
+    saveGithub.addEventListener('click', ()=>{ githubPanel.classList.toggle('hidden'); });
+
+    // Export
+    exportBtn.addEventListener('click', ()=>{
+      const dataStr = JSON.stringify(locations, null, 2);
+      const blob = new Blob([dataStr], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'locations.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    // Import
+    importBtn.addEventListener('click', ()=> fileInput.click());
+    fileInput.addEventListener('change', (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        try{
+          const parsed = JSON.parse(reader.result);
+          if(Array.isArray(parsed)){
+            locations = parsed; saveLocations(); renderAll(); alert('Imported locations and saved to localStorage.');
+          } else alert('Invalid JSON format (expecting array)');
+        }catch(err){ alert('Failed to parse JSON') }
+      };
+      reader.readAsText(f);
+    });
+
+    // GitHub commit flow (client-side). WARNING: Be careful with your token.
+    commitGithub.addEventListener('click', ()=>{
+      const owner = document.getElementById('ghOwner').value.trim();
+      const repo = document.getElementById('ghRepo').value.trim();
+      const path = document.getElementById('ghPath').value.trim() || 'locations.json';
+      const branch = document.getElementById('ghBranch').value.trim() || 'main';
+      const token = document.getElementById('ghToken').value.trim();
+      if(!owner||!repo||!token){ alert('Provide owner, repo, and token'); return }
+      // prepare content
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(locations, null, 2))));
+      // first get the current file to find sha (if exists)
+      const getUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+      fetch(getUrl,{headers:{'Authorization':'token '+token,'Accept':'application/vnd.github+json'}}).then(r=>{
+        if(r.status===200) return r.json().then(j=>j.sha).catch(()=>null);
+        if(r.status===404) return null;
+        throw new Error('Failed to get file: ' + r.status);
+      }).then(sha=>{
+        const putUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+        const body = { message: 'Update locations.json from travel map', content, branch };
+        if(sha) body.sha = sha;
+        return fetch(putUrl,{method:'PUT',headers:{'Authorization':'token '+token,'Accept':'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+      }).then(r=>r.json()).then(resp=>{
+        if(resp.commit){ alert('Committed to GitHub: ' + (resp.content && resp.content.path ? resp.content.path : 'OK')); } else { console.error(resp); alert('GitHub commit failed (see console)'); }
+      }).catch(err=>{ console.error(err); alert('GitHub error: ' + err.message) });
+    });
+
+    // small utilities
+    function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]; }); }
+
+    function renderMarkerList(){ /* optional future: list of saved pins */ }
+
+    // Expose a helper to clear storage (dev use)
+    window._clearPins = ()=>{ if(confirm('Clear saved pins?')){ localStorage.removeItem(STORAGE_KEY); locations = loadLocations(); renderAll(); }}
+  </script>
+</body>
+</html>
