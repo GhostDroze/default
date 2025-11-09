@@ -1,4 +1,6 @@
 [
-  { "name": "Cape Fear River", "lat": 34.229, "lng": -77.953, "description": "Beautiful riverside spot." },
-  { "name": "Southport", "lat": 33.921, "lng": -78.020, "description": "Our starting point!" }
+  { "name": "Big Bend National Park", "lat": 29.1275, "lng": -103.2425, "description": "Texas wilderness" },
+  { "name": "Olympic National Park", "lat": 47.8021, "lng": -123.6044, "description": "Rainforest and mountains" },
+  { "name": "Katmai National Park", "lat": 58.6129, "lng": -155.0631, "description": "Bears and volcanoes" },
+  { "name": "Pikes Peak", "lat": 38.8409, "lng": -105.0423, "description": "Famous Colorado summit" }
 ]
